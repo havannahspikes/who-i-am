@@ -676,6 +676,23 @@ def pulse_receiver():
     except Exception as e:
         print("Error saving pulse:", e)
 
+    # Optional: forward to BREATH_URL if configured (best-effort)
+    BREATH_URL = os.environ.get("BREATH_URL")
+    BREATH_TOKEN = os.environ.get("BREATH_TOKEN")
+    if BREATH_URL and requests:
+        try:
+            headers = {}
+            if BREATH_TOKEN:
+                headers["X-PULSE-TOKEN"] = BREATH_TOKEN
+            post_session = out_session if out_session else requests
+            try:
+                post_session.post(BREATH_URL, json={"from": "whoiam", "status": "alive", "received_at": received_at}, headers=headers, timeout=10)
+                log(f"Forwarded pulse to {BREATH_URL}")
+            except Exception as e:
+                print("Forward to breathe failed:", e)
+        except Exception as e:
+            print("Forward to breathe failed:", e)
+
     # Optional: trigger GitHub backup (best-effort) — commented out by default
     # if github_enabled():
     #     try:
@@ -724,4 +741,3 @@ else:
 if __name__ == "__main__":
     # In production, use gunicorn as you do. This runs a dev server when executed directly.
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-
