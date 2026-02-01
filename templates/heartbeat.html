@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Heartbeat — Admin</h2>
+
+<div class="row g-3">
+  <!-- Profile editor -->
+  <div class="col-12">
+    <div class="card p-3 mb-3">
+      <h5>Edit profile (this appears on the life page)</h5>
+      <form action="{{ url_for('admin_update_profile') }}" method="post" class="row g-2">
+        <div class="col-md-6"><input name="name" class="form-control" placeholder="Name" value="{{ profile.name }}"></div>
+        <div class="col-md-6"><input name="tagline" class="form-control" placeholder="Tagline" value="{{ profile.tagline }}"></div>
+        <div class="col-md-4"><input name="location" class="form-control" placeholder="Location" value="{{ profile.location }}"></div>
+        <div class="col-md-4"><input name="contact_email" class="form-control" placeholder="Contact email" value="{{ profile.contact_email }}"></div>
+        <div class="col-md-4"><input name="github" class="form-control" placeholder="GitHub URL" value="{{ profile.github }}"></div>
+        <div class="col-md-6"><input name="linkedin" class="form-control" placeholder="LinkedIn URL" value="{{ profile.linkedin }}"></div>
+        <div class="col-md-6"><input name="portfolio" class="form-control" placeholder="Portfolio URL" value="{{ profile.portfolio }}"></div>
+        <div class="col-12">
+          <textarea name="quick_facts" class="form-control" placeholder="Quick facts, degree, skills, etc.">{{ profile.quick_facts }}</textarea>
+        </div>
+        <div class="col-12 text-end">
+          <button class="btn btn-primary">Save profile</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Upload manager -->
+  <div class="col-12">
+    <div class="card p-3 mb-3">
+      <h5>Publish a document to the life page</h5>
+      <form action="{{ url_for('admin_upload') }}" method="post" enctype="multipart/form-data" class="row g-2">
+        <div class="col-md-6"><input type="file" name="doc" class="form-control" required></div>
+        <div class="col-md-6"><input name="tags" class="form-control" placeholder="Tags (comma separated)"></div>
+        <div class="col-12"><input name="description" class="form-control" placeholder="Short description (optional)"></div>
+        <div class="col-12 text-end"><button class="btn btn-success">Upload & publish</button></div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Users -->
+  <div class="col-lg-6">
+    <div class="card p-3 mb-3">
+      <h5>Users</h5>
+      <table class="table table-striped">
+        <thead><tr><th>ID</th><th>Username</th><th>Admin</th><th>Action</th></tr></thead>
+        <tbody>
+        {% for u in users %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.username }}</td>
+            <td>{{ 'Yes' if u.is_admin else 'No' }}</td>
+            <td>
+              {% if session.username != u.username %}
+              <form action="{{ url_for('delete_user', user_id=u.id) }}" method="post" style="display:inline">
+                <button class="btn btn-sm btn-danger">Delete</button>
+              </form>
+              {% else %}
+                <span class="text-muted small">Cannot delete yourself</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Uploads -->
+  <div class="col-lg-6">
+    <div class="card p-3 mb-3">
+      <h5>Uploads</h5>
+      <table class="table table-hover">
+        <thead><tr>
+          <th>ID</th><th>Name</th><th>Uploader</th><th>Size</th><th>Mime</th><th>Tags</th><th>Uploaded</th><th>Downloads</th><th>Action</th>
+        </tr></thead>
+        <tbody>
+        {% for up in uploads %}
+          <tr>
+            <td>{{ up.id }}</td>
+            <td><a href="{{ url_for('download_by_id', upload_id=up.id) }}" target="_blank">{{ up.original_name or up.filename }}</a></td>
+            <td>{{ up.uploader or '—' }}</td>
+            <td>{{ (up.size // 1024) if up.size else '—' }} KB</td>
+            <td>{{ up.mime or '—' }}</td>
+            <td>{{ up.tags or '—' }}</td>
+            <td>{{ up.uploaded_at.split('T')[0] if up.uploaded_at else '—' }}</td>
+            <td>{{ up.downloads or 0 }}</td>
+            <td>
+              <form action="{{ url_for('delete_upload', upload_id=up.id) }}" method="post" style="display:inline">
+                <button class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

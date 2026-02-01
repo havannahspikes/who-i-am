@@ -1,0 +1,86 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card p-4 shadow-sm">
+      <div class="d-flex align-items-start gap-3">
+        <div>
+          <h1 class="mb-1">Hello — I'm <span class="text-primary">{{ profile.name }}</span></h1>
+          <p class="lead mb-1">{{ profile.tagline }}</p>
+          <p class="text-muted mb-0">{{ profile.location }}</p>
+        </div>
+        <div class="ms-auto text-end">
+          <a class="btn btn-outline-secondary mb-2" href="{{ profile.portfolio or '#' }}" target="_blank" rel="noopener">Portfolio</a>
+          <a class="btn btn-primary mb-2" href="mailto:{{ profile.contact_email }}">Contact</a>
+          <div class="small text-muted">Links: <a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a> · <a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></div>
+        </div>
+      </div>
+
+      <hr />
+
+      <!-- Search / filter -->
+      <form method="get" class="mb-3">
+        <div class="input-group">
+          <input type="text" name="q" value="{{ query or '' }}" class="form-control" placeholder="Search documents, descriptions, tags...">
+          <input type="text" name="tag" value="{{ tag or '' }}" class="form-control" placeholder="Filter by tag">
+          <button class="btn btn-outline-secondary">Search</button>
+        </div>
+      </form>
+
+      <hr />
+
+      <!-- Documents -->
+      <h5>Documents & CVs</h5>
+      {% if uploads %}
+        <div class="list-group">
+          {% for up in uploads %}
+            <div class="list-group-item">
+              <div class="d-flex w-100 justify-content-between align-items-start">
+                <div>
+                  <h6 class="mb-1">{{ up.original_name or up.filename }}</h6>
+                  <p class="mb-1 small text-muted">{{ up.description or 'No description provided.' }}</p>
+                  <div class="small text-muted">
+                    Published: {{ up.uploaded_at.split('T')[0] if up.uploaded_at }} —
+                    {{ (up.size // 1024) if up.size else '—' }} KB —
+                    {{ up.mime or 'n/a' }} —
+                    Downloads: {{ up.downloads or 0 }}
+                  </div>
+                  {% if up.tags %}
+                    <div class="mt-1">
+                      {% for t in up.tags.split(',') %}
+                        <a href="{{ url_for('life') }}?tag={{ t.strip() }}" class="badge bg-light text-dark me-1">{{ t.strip() }}</a>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </div>
+                <div class="text-end">
+                  <a class="btn btn-sm btn-outline-primary mb-1" href="{{ url_for('download_by_id', upload_id=up.id) }}">Download</a>
+                </div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted">No documents published yet.</p>
+      {% endif %}
+
+    </div>
+  </div>
+
+  <!-- Sidebar -->
+  <div class="col-lg-4">
+    <div class="card p-3 shadow-sm mb-3">
+      <h5 class="mb-2">Quick facts</h5>
+      <p class="mb-1">{{ profile.quick_facts }}</p>
+      <hr />
+      <p class="mb-1"><strong>Contact:</strong> <a href="mailto:{{ profile.contact_email }}">{{ profile.contact_email }}</a></p>
+      <p class="mb-0"><strong>Links:</strong></p>
+      <ul class="small mb-0">
+        <li><a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></li>
+        <li><a href="{{ profile.portfolio }}" target="_blank" rel="noopener">Portfolio</a></li>
+      </ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Who I Am — {{ title or 'Profile' }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <div class="container">
+      <!-- Brand goes to /alpha for guests, /life for signed-in users -->
+      <a class="navbar-brand" href="{{ url_for('life') if session.get('username') else url_for('alpha') }}">
+        Who I Am
+      </a>
+
+      <div class="ms-auto">
+        {% if session.get('username') %}
+
+          <a class="btn btn-sm btn-outline-light ms-2" href="{{ url_for('logout') }}">Logout</a>
+        {% else %}
+          <a class="btn btn-sm btn-outline-light" href="{{ url_for('alpha') }}">Sign In</a>
+        {% endif %}
+      </div>
+    </div>
+  </nav>
+
+  <div class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, msg in messages %}
+          <div class="alert alert-{{ category }}">{{ msg }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </div>
+</body>
+</html>
