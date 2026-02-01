@@ -1,20 +1,24 @@
 #!/usr/bin/env python3
 """
-Full app.py with GitHub-backed optional sync for the whoiam.db file.
+Full app.py with defensive GitHub-backed optional sync for the whoiam.db file.
 
-Behavior:
-- Keeps a local SQLite DB (whoiam.db) for runtime.
-- If GITHUB_* env vars are set, the app will:
-  - Attempt to download whoiam.db from the repo on startup if local DB is missing.
-  - Upload the whoiam.db to the repo after admin actions (upload, profile update, deletes).
-- WARNING: GitHub is used as a backup/sync storage, not a transactional DB. See comments.
+Preserves:
+- alpha (login/register/forgot/reset)
+- life (public "life" page with uploads listing & search)
+- heartbeat (admin dashboard)
+- upload / download / delete / profile update flows
+
+Defensive changes:
+- Safe import of `requests` so the app won't fail to start if it's missing.
+- github_enabled() requires requests to be present.
+- GitHub helper funcs check github_enabled() and return safely if disabled.
 """
+
 import os
 import sqlite3
 import mimetypes
 import base64
 import json
-import requests
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -22,6 +26,13 @@ from flask import (
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
+
+# safe requests import — app can start if requests is missing
+try:
+    import requests
+except Exception:
+    requests = None
+    print("Warning: 'requests' package not available. GitHub sync disabled.")
 
 # -------------------------
 # Configuration
@@ -141,15 +152,20 @@ def init_db_and_migrate():
     db.commit()
 
 # -------------------------
-# GitHub sync helpers
+# GitHub sync helpers (defensive)
 # -------------------------
 def github_enabled():
-    return bool(GITHUB_TOKEN and GITHUB_REPO)
+    # require requests package + env vars
+    return bool(requests and GITHUB_TOKEN and GITHUB_REPO)
 
 def github_get_file_info(path):
     """
     Return dict {'sha':..., 'content':bytes} if file exists, else None.
+    Defensive: returns None if github sync is disabled.
     """
+    if not github_enabled():
+        return None
+
     url = f"{GITHUB_API_ROOT}/repos/{GITHUB_REPO}/contents/{path}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
     params = {"ref": GITHUB_BRANCH}
@@ -163,7 +179,7 @@ def github_get_file_info(path):
         sha = data.get("sha")
         content_b64 = data.get("content", "")
         try:
-            raw = base64.b64decode(content_b64)
+            raw = base64.b64decode(content_b64) if content_b64 else None
         except Exception:
             raw = None
         return {"sha": sha, "content": raw}
@@ -172,8 +188,11 @@ def github_get_file_info(path):
 def github_download_db_if_missing():
     """
     Download whoiam.db from GitHub into DB_PATH only if local DB is missing or empty.
+    Returns True if downloaded, False otherwise.
     """
     if not github_enabled():
+        # GitHub sync disabled (either requests missing or env vars not set)
+        print("GitHub sync disabled; skipping download.")
         return False
     if os.path.exists(DB_PATH) and os.path.getsize(DB_PATH) > 0:
         # preserve local DB
@@ -195,17 +214,23 @@ def github_download_db_if_missing():
 def github_upload_db(commit_message="Update whoiam.db from app"):
     """
     Create/update whoiam.db in the repo. Returns True on success.
+    Defensive: returns False if sync not enabled or an error occurs.
     """
     if not github_enabled():
+        print("GitHub sync disabled; skipping upload.")
         return False
     if not os.path.exists(DB_PATH):
         print("No local DB to upload.")
         return False
 
-    with open(DB_PATH, "rb") as f:
-        content = f.read()
-    b64 = base64.b64encode(content).decode("utf-8")
+    try:
+        with open(DB_PATH, "rb") as f:
+            content = f.read()
+    except Exception as e:
+        print("Unable to read local DB for upload:", e)
+        return False
 
+    b64 = base64.b64encode(content).decode("utf-8")
     url = f"{GITHUB_API_ROOT}/repos/{GITHUB_REPO}/contents/{GITHUB_DB_PATH}"
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
 
@@ -579,4 +604,5 @@ def logout():
 # Run
 # -------------------------
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    # In production, use gunicorn as you do. This runs a dev server when executed directly.
+    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
