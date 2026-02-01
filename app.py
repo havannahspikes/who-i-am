@@ -50,7 +50,7 @@ ALLOWED_EXT = {"pdf", "doc", "docx", "txt", "pptx", "xlsx"}
 PULSE_SECRET = os.environ.get("PULSE_SECRET")
 
 # Outbound (this app -> other service) pinger config (optional)
-OUTBOUND_TARGET = os.environ.get("OUTBOUND_TARGET", "https://breathe.onrender.com/receive_pulse")
+OUTBOUND_TARGET = os.environ.get("OUTBOUND_TARGET", "https://breathe-5006.onrender.com/receive_pulse")
 OUTBOUND_PULSE_TOKEN = os.environ.get("OUTBOUND_PULSE_TOKEN")  # header X-PULSE-TOKEN when pinging
 OUTBOUND_AUTO_PING = os.environ.get("OUTBOUND_AUTO_PING", "false").lower() in ("1", "true", "yes")
 try:
@@ -724,3 +724,4 @@ else:
 if __name__ == "__main__":
     # In production, use gunicorn as you do. This runs a dev server when executed directly.
     app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
