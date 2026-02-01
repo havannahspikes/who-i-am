@@ -8,12 +8,11 @@ Preserves:
 - heartbeat (admin dashboard)
 - upload / download / delete / profile update flows
 
-Defensive changes:
-- Safe import of `requests` so the app won't fail to start if it's missing.
-- github_enabled() requires requests to be present.
-- GitHub helper funcs check github_enabled() and return safely if disabled.
+Added:
+- /pulse_receiver endpoint (POST/GET) to accept pulses
+- pulses table + profile.last_pulse migration
+- defensive requests import + github guards
 """
-
 import os
 import sqlite3
 import mimetypes
@@ -22,7 +21,7 @@ import json
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
-    session, send_from_directory, flash, g, abort
+    session, send_from_directory, flash, g, abort, jsonify
 )
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -41,6 +40,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("LOCAL_DB_PATH", os.path.join(BASE_DIR, "whoiam.db"))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 ALLOWED_EXT = {"pdf", "doc", "docx", "txt", "pptx", "xlsx"}
+
+# Optional pulse secret (if set, inbound pulses must include header X-PULSE-TOKEN or ?token=...)
+PULSE_SECRET = os.environ.get("PULSE_SECRET")
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change_this_to_a_random_value")
@@ -121,6 +123,15 @@ def init_db_and_migrate():
             quick_facts TEXT
         )
     """)
+    # pulses table (new) — stores received pulses for auditing
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS pulses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source TEXT,
+            payload TEXT,
+            received_at TEXT
+        )
+    """)
     db.commit()
 
     # add missing uploads columns
@@ -134,6 +145,9 @@ def init_db_and_migrate():
     ]
     for col in columns:
         add_column_if_missing("uploads", col)
+
+    # add last_pulse column to profile if missing (new)
+    add_column_if_missing("profile", ("last_pulse", "TEXT DEFAULT NULL"))
 
     # default profile row if missing
     cur = db.execute("SELECT COUNT(*) as c FROM profile")
@@ -599,6 +613,50 @@ def logout():
     session.clear()
     flash("Logged out", "info")
     return redirect(url_for("alpha"))
+
+# -------------------------
+# PULSE RECEIVER PLACEHOLDER (new)
+# -------------------------
+@app.route("/pulse_receiver", methods=["POST", "GET"])
+def pulse_receiver():
+    """
+    Accepts pulses from external services.
+    - If PULSE_SECRET env var is set, requires header X-PULSE-TOKEN or ?token=... to match.
+    - Stores the pulse in `pulses` table and updates profile.last_pulse.
+    - Returns JSON {status, received_at}.
+    """
+    # secret check (optional)
+    token = request.headers.get("X-PULSE-TOKEN") or request.args.get("token")
+    if PULSE_SECRET:
+        if not token or token != PULSE_SECRET:
+            return jsonify({"status":"unauthorized"}), 401
+
+    # get payload (JSON preferred)
+    payload = request.get_json(silent=True)
+    if payload is None:
+        # fallback to form or a minimal payload
+        payload = request.form.to_dict() or {"message": "ping"}
+
+    received_at = datetime.utcnow().isoformat()
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO pulses (source, payload, received_at) VALUES (?, ?, ?)",
+            (request.remote_addr or "unknown", json.dumps(payload), received_at)
+        )
+        db.execute("UPDATE profile SET last_pulse = ? WHERE id = 1", (received_at,))
+        db.commit()
+    except Exception as e:
+        print("Error saving pulse:", e)
+
+    # Optional: trigger GitHub backup (best-effort) — commented out by default
+    # if github_enabled():
+    #     try:
+    #         github_upload_db("Pulse received — update DB")
+    #     except Exception as e:
+    #         print("GitHub upload after pulse failed:", e)
+
+    return jsonify({"status":"ok", "received_at": received_at})
 
 # -------------------------
 # Run
