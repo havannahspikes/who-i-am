@@ -12,12 +12,17 @@ Added:
 - /pulse_receiver endpoint (POST/GET) to accept pulses
 - pulses table + profile.last_pulse migration
 - defensive requests import + github guards
+- OPTIONAL outbound auto-pinger (random interval between MIN_INTERVAL and MAX_INTERVAL seconds)
 """
 import os
 import sqlite3
 import mimetypes
 import base64
 import json
+import time
+import random
+import threading
+import sys
 from datetime import datetime
 from flask import (
     Flask, render_template, request, redirect, url_for,
@@ -44,6 +49,21 @@ ALLOWED_EXT = {"pdf", "doc", "docx", "txt", "pptx", "xlsx"}
 # Optional pulse secret (if set, inbound pulses must include header X-PULSE-TOKEN or ?token=...)
 PULSE_SECRET = os.environ.get("PULSE_SECRET")
 
+# Outbound (this app -> other service) pinger config (optional)
+OUTBOUND_TARGET = os.environ.get("OUTBOUND_TARGET", "https://breathe.onrender.com/receive_pulse")
+OUTBOUND_PULSE_TOKEN = os.environ.get("OUTBOUND_PULSE_TOKEN")  # header X-PULSE-TOKEN when pinging
+OUTBOUND_AUTO_PING = os.environ.get("OUTBOUND_AUTO_PING", "false").lower() in ("1", "true", "yes")
+try:
+    MIN_INTERVAL = float(os.environ.get("MIN_INTERVAL", "15"))
+    MAX_INTERVAL = float(os.environ.get("MAX_INTERVAL", "45"))
+except Exception:
+    MIN_INTERVAL = 15.0
+    MAX_INTERVAL = 45.0
+
+if MIN_INTERVAL <= 0 or MAX_INTERVAL <= 0 or MIN_INTERVAL > MAX_INTERVAL:
+    MIN_INTERVAL = 15.0
+    MAX_INTERVAL = 45.0
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "change_this_to_a_random_value")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
@@ -56,12 +76,19 @@ GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "main")
 GITHUB_DB_PATH = os.environ.get("GITHUB_DB_PATH", "whoiam.db")
 GITHUB_API_ROOT = "https://api.github.com"
 
+# session for outbound requests (if requests available)
+out_session = requests.Session() if requests else None
+
+def log(*a, **k):
+    print(*a, **k)
+    sys.stdout.flush()
+
 # -------------------------
 # DB helpers + migration
 # -------------------------
 def get_db():
     if getattr(g, "_db", None) is None:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         g._db = conn
     return g._db
@@ -657,6 +684,39 @@ def pulse_receiver():
     #         print("GitHub upload after pulse failed:", e)
 
     return jsonify({"status":"ok", "received_at": received_at})
+
+# -------------------------
+# Outbound auto-pinger (optional)
+# -------------------------
+def outbound_pinger_loop():
+    """
+    Post a small pulse to OUTBOUND_TARGET at random intervals between MIN_INTERVAL and MAX_INTERVAL.
+    Adds header X-PULSE-TOKEN if OUTBOUND_PULSE_TOKEN is present.
+    """
+    if not out_session:
+        log("outbound_pinger: requests not available; pinger disabled")
+        return
+    log(f"outbound_pinger: starting (target={OUTBOUND_TARGET}, intervals {MIN_INTERVAL}-{MAX_INTERVAL}s)")
+    while True:
+        wait = random.uniform(MIN_INTERVAL, MAX_INTERVAL)
+        log(f"outbound_pinger: sleeping {wait:.2f}s")
+        time.sleep(wait)
+        payload = {"source": "whoiam", "timestamp": datetime.utcnow().isoformat()}
+        headers = {}
+        if OUTBOUND_PULSE_TOKEN:
+            headers["X-PULSE-TOKEN"] = OUTBOUND_PULSE_TOKEN
+        try:
+            r = out_session.post(OUTBOUND_TARGET, json=payload, headers=headers, timeout=10)
+            log(f"outbound_pinger: POST {OUTBOUND_TARGET} -> {r.status_code}")
+        except Exception as e:
+            log("outbound_pinger: POST error:", e)
+
+# start outbound pinger if enabled
+if OUTBOUND_AUTO_PING:
+    t_out = threading.Thread(target=outbound_pinger_loop, name="outbound_pinger", daemon=True)
+    t_out.start()
+else:
+    log("outbound_pinger: disabled (set OUTBOUND_AUTO_PING=true to enable)")
 
 # -------------------------
 # Run
