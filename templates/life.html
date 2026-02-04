@@ -10,9 +10,35 @@
           <p class="text-muted mb-0">{{ profile.location }}</p>
         </div>
         <div class="ms-auto text-end">
-          <a class="btn btn-outline-secondary mb-2" href="{{ profile.portfolio or '#' }}" target="_blank" rel="noopener">Portfolio</a>
+          <a class="btn btn-outline-secondary mb-2" href="{{ (profile.portfolio or '#') }}" target="_blank" rel="noopener">Portfolio</a>
           <a class="btn btn-primary mb-2" href="mailto:{{ profile.contact_email }}">Contact</a>
-          <div class="small text-muted">Links: <a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a> · <a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></div>
+
+          <div class="small text-muted mt-1">
+            Links:
+            {# Prefer arrays if present, otherwise fall back to legacy fields #}
+            {% set gh = profile.github_links if profile.github_links else ( [profile.github] if profile.github else [] ) %}
+            {% set li = profile.linkedin_links if profile.linkedin_links else ( [profile.linkedin] if profile.linkedin else [] ) %}
+            {% set other = profile.other_links if profile.other_links else [] %}
+
+            {% if gh %}
+              {% for u in gh %}
+                <a href="{{ u }}" target="_blank" rel="noopener">GitHub{% if gh|length > 1 %} {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="text-muted">GitHub (none)</span>
+            {% endif %}
+
+            ·
+
+            {% if li %}
+              {% for u in li %}
+                <a href="{{ u }}" target="_blank" rel="noopener">LinkedIn{% if li|length > 1 %} {{ loop.index }}{% endif %}</a>{% if not loop.last %} · {% endif %}
+              {% endfor %}
+            {% else %}
+              <span class="text-muted">LinkedIn (none)</span>
+            {% endif %}
+          </div>
+
         </div>
       </div>
 
@@ -76,9 +102,25 @@
       <p class="mb-1"><strong>Contact:</strong> <a href="mailto:{{ profile.contact_email }}">{{ profile.contact_email }}</a></p>
       <p class="mb-0"><strong>Links:</strong></p>
       <ul class="small mb-0">
-        <li><a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a></li>
-        <li><a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></li>
-        <li><a href="{{ profile.portfolio }}" target="_blank" rel="noopener">Portfolio</a></li>
+        {# Show all GitHub links (or fallback to legacy) #}
+        {% set gh_all = profile.github_links if profile.github_links else ( [profile.github] if profile.github else [] ) %}
+        {% for u in gh_all %}
+          <li><a href="{{ u }}" target="_blank" rel="noopener">{{ u.replace('https://','')|replace('http://','') }}</a></li>
+        {% endfor %}
+
+        {% set li_all = profile.linkedin_links if profile.linkedin_links else ( [profile.linkedin] if profile.linkedin else [] ) %}
+        {% for u in li_all %}
+          <li><a href="{{ u }}" target="_blank" rel="noopener">{{ u.replace('https://','')|replace('http://','') }}</a></li>
+        {% endfor %}
+
+        {% for u in profile.other_links %}
+          <li><a href="{{ u }}" target="_blank" rel="noopener">{{ u.replace('https://','')|replace('http://','') }}</a></li>
+        {% endfor %}
+
+        {# If nothing, show portfolio or a placeholder #}
+        {% if not gh_all and not li_all and (not profile.other_links) %}
+          <li><a href="{{ profile.portfolio or '#' }}" target="_blank" rel="noopener">{{ profile.portfolio or 'Portfolio' }}</a></li>
+        {% endif %}
       </ul>
     </div>
   </div>
