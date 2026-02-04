@@ -9,10 +9,14 @@ Preserves:
 - upload / download / delete / profile update flows
 
 Added:
-- /pulse_receiver endpoint (POST/GET) to accept pulses
+- support for multiple github/linkedin/other links (stored as JSON arrays)
+- normalization of user-entered links so values like `Metatrone/ProjectX` become `https://github.com/Metatrone/ProjectX`
+- get_profile() returns a dict with both legacy single link fields (github, linkedin) and parsed arrays
+- admin_update_profile accepts github[] / linkedin[] / other[] (and still accepts single 'github'/'linkedin')
+- /pulse_receiver endpoint (POST/GET)
 - pulses table + profile.last_pulse migration
 - defensive requests import + github guards
-- OPTIONAL outbound auto-pinger (random interval between MIN_INTERVAL and MAX_INTERVAL seconds)
+- OPTIONAL outbound auto-pinger
 """
 import os
 import sqlite3
@@ -23,7 +27,9 @@ import time
 import random
 import threading
 import sys
+import re
 from datetime import datetime
+from urllib.parse import urlparse
 from flask import (
     Flask, render_template, request, redirect, url_for,
     session, send_from_directory, flash, g, abort, jsonify
@@ -136,7 +142,7 @@ def init_db_and_migrate():
             uploader TEXT
         )
     """)
-    # profile single-row config
+    # profile single-row config: keep legacy github/linkedin AND add JSON arrays columns for links
     db.execute("""
         CREATE TABLE IF NOT EXISTS profile (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -147,10 +153,14 @@ def init_db_and_migrate():
             github TEXT,
             linkedin TEXT,
             portfolio TEXT,
-            quick_facts TEXT
+            quick_facts TEXT,
+            github_links TEXT DEFAULT '[]',
+            linkedin_links TEXT DEFAULT '[]',
+            other_links TEXT DEFAULT '[]',
+            last_pulse TEXT DEFAULT NULL
         )
     """)
-    # pulses table (new) — stores received pulses for auditing
+    # pulses table — stores received pulses for auditing
     db.execute("""
         CREATE TABLE IF NOT EXISTS pulses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -173,7 +183,10 @@ def init_db_and_migrate():
     for col in columns:
         add_column_if_missing("uploads", col)
 
-    # add last_pulse column to profile if missing (new)
+    # add missing link-array columns if this DB was created earlier
+    add_column_if_missing("profile", ("github_links", "TEXT DEFAULT '[]'"))
+    add_column_if_missing("profile", ("linkedin_links", "TEXT DEFAULT '[]'"))
+    add_column_if_missing("profile", ("other_links", "TEXT DEFAULT '[]'"))
     add_column_if_missing("profile", ("last_pulse", "TEXT DEFAULT NULL"))
 
     # default profile row if missing
@@ -181,10 +194,14 @@ def init_db_and_migrate():
     r = cur.fetchone()
     if not r or r["c"] == 0:
         db.execute(
-            "INSERT INTO profile (id, name, tagline, location, contact_email, github, linkedin, portfolio, quick_facts) VALUES (?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO profile (id, name, tagline, location, contact_email, github, linkedin, portfolio, quick_facts, github_links, linkedin_links, other_links) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (1, "Your Name", "Developer • IT • Cybersecurity", "City, Country", "you@example.com",
              "https://github.com/yourusername", "https://linkedin.com/in/yourprofile", "https://yourportfolio.example.com",
-             "Degree: BSc Computer Science; Skills: Python, JS, Linux, SQL")
+             "Degree: BSc Computer Science; Skills: Python, JS, Linux, SQL",
+             json.dumps(["https://github.com/yourusername"]),
+             json.dumps(["https://www.linkedin.com/in/yourprofile"]),
+             json.dumps(["https://yourportfolio.example.com"])
+            )
         )
         db.commit()
 
@@ -344,9 +361,128 @@ def get_upload_by_id(upload_id):
     db = get_db()
     return db.execute("SELECT * FROM uploads WHERE id = ?", (upload_id,)).fetchone()
 
+def normalize_link(raw, kind=None):
+    """
+    Normalize user input link to an absolute https URL.
+    Kind can be 'github' or 'linkedin' to apply heuristics.
+    - Accepts:
+        Metatrone/ProjectX
+        github.com/Metatrone/ProjectX
+        https://github.com/Metatrone/ProjectX
+        in/yourname
+        linkedin.com/in/yourname
+        yoursite.com/page
+    - Returns absolute https URL or None if input blank.
+    """
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    s = s.strip('<>')
+
+    # If already includes scheme, return normalized
+    parsed = urlparse(s)
+    if parsed.scheme:
+        return s
+
+    s_l = s.lower()
+
+    # Domain-like input (example.com or www.example.com or github.com/...)
+    if re.match(r'^[\w\-]+\.[\w\.\-]+', s_l):
+        # If it's github or linkedin domain, format appropriately
+        if s_l.startswith('github.com') or 'github.com' in s_l:
+            return 'https://' + s.lstrip('/')
+        if s_l.startswith('linkedin.com') or 'linkedin.com' in s_l:
+            if s_l.startswith('linkedin.com/in') or '/in/' in s_l:
+                return 'https://' + s.lstrip('/')
+            return 'https://www.' + s.lstrip('/')
+        return 'https://' + s.lstrip('/')
+
+    # If kind==github or looks like user/repo, build github URL
+    if kind == 'github' or '/' in s:
+        # If user typed something with github already, prepend scheme
+        if 'github.com' in s_l:
+            return 'https://' + s.lstrip('/')
+        return 'https://github.com/' + s.lstrip('/')
+
+    # linkedin shorthand
+    if kind == 'linkedin':
+        s2 = s.lstrip('/')
+        if s2.startswith('linkedin.com'):
+            return 'https://' + s2
+        if s2.startswith('in/'):
+            return 'https://www.linkedin.com/' + s2
+        return 'https://www.linkedin.com/in/' + s2
+
+    # fallback: sticky https
+    return 'https://' + s.lstrip('/')
+
 def get_profile():
+    """
+    Return profile as a dict. Provides:
+      - legacy single fields: name, tagline, location, contact_email, github, linkedin, portfolio, quick_facts
+      - arrays: github_links (list), linkedin_links (list), other_links (list)
+      - last_pulse: string or None
+    """
     db = get_db()
-    return db.execute("SELECT * FROM profile WHERE id = 1").fetchone()
+    row = db.execute("SELECT * FROM profile WHERE id = 1").fetchone()
+    if not row:
+        return {
+            "name": "",
+            "tagline": "",
+            "location": "",
+            "contact_email": "",
+            "github": "",
+            "linkedin": "",
+            "portfolio": "",
+            "quick_facts": "",
+            "github_links": [],
+            "linkedin_links": [],
+            "other_links": [],
+            "last_pulse": None
+        }
+    # parse JSON arrays safely
+    def parse_json_field(field):
+        try:
+            val = row[field]
+            if val is None:
+                return []
+            if isinstance(val, (list, tuple)):
+                return list(val)
+            return json.loads(val) if isinstance(val, str) and val.strip().startswith('[') else []
+        except Exception:
+            return []
+
+    github_links = parse_json_field("github_links")
+    linkedin_links = parse_json_field("linkedin_links")
+    other_links = parse_json_field("other_links")
+
+    # fallback: if arrays empty but legacy single-url exists, use it
+    legacy_github = row["github"] or ""
+    legacy_linkedin = row["linkedin"] or ""
+
+    if not github_links and legacy_github:
+        github_links = [legacy_github]
+    if not linkedin_links and legacy_linkedin:
+        linkedin_links = [legacy_linkedin]
+
+    profile = {
+        "id": row["id"],
+        "name": row["name"],
+        "tagline": row["tagline"],
+        "location": row["location"],
+        "contact_email": row["contact_email"],
+        "github": legacy_github,   # keep legacy single field for templates expecting profile.github
+        "linkedin": legacy_linkedin,
+        "portfolio": row["portfolio"],
+        "quick_facts": row["quick_facts"],
+        "github_links": github_links,
+        "linkedin_links": linkedin_links,
+        "other_links": other_links,
+        "last_pulse": row.get("last_pulse") if "last_pulse" in row.keys() else None
+    }
+    return profile
 
 # -------------------------
 # Routes
@@ -537,18 +673,65 @@ def admin_update_profile():
     tagline = request.form.get("tagline", "").strip()
     location = request.form.get("location", "").strip()
     contact_email = request.form.get("contact_email", "").strip()
-    github = request.form.get("github", "").strip()
-    linkedin = request.form.get("linkedin", "").strip()
+
+    # Backwards-compatible single inputs (legacy)
+    legacy_github = request.form.get("github", "").strip()
+    legacy_linkedin = request.form.get("linkedin", "").strip()
     portfolio = request.form.get("portfolio", "").strip()
     quick_facts = request.form.get("quick_facts", "").strip()
 
+    # New: multiple inputs (arrays). Works if the admin form uses github[], linkedin[], other[].
+    raw_githubs = request.form.getlist("github[]")
+    raw_linkedins = request.form.getlist("linkedin[]")
+    raw_others = request.form.getlist("other[]")
+
+    # If arrays empty but legacy single provided, use legacy as single-element list
+    if not raw_githubs and legacy_github:
+        raw_githubs = [legacy_github]
+    if not raw_linkedins and legacy_linkedin:
+        raw_linkedins = [legacy_linkedin]
+
+    githubs = []
+    for r in raw_githubs:
+        n = normalize_link(r, kind="github")
+        if n:
+            githubs.append(n)
+
+    linkedins = []
+    for r in raw_linkedins:
+        n = normalize_link(r, kind="linkedin")
+        if n:
+            linkedins.append(n)
+
+    others = []
+    for r in raw_others:
+        n = normalize_link(r)
+        if n:
+            others.append(n)
+
+    # Ensure portfolio normalized if present
+    portfolio_norm = normalize_link(portfolio) if portfolio else ""
+
+    # Use first element as legacy single-field for backward compatibility
+    legacy_github_norm = githubs[0] if githubs else (normalize_link(legacy_github, kind="github") if legacy_github else "")
+    legacy_linkedin_norm = linkedins[0] if linkedins else (normalize_link(legacy_linkedin, kind="linkedin") if legacy_linkedin else "")
+
     db = get_db()
     db.execute(
-        "UPDATE profile SET name=?, tagline=?, location=?, contact_email=?, github=?, linkedin=?, portfolio=?, quick_facts=? WHERE id = 1",
-        (name, tagline, location, contact_email, github, linkedin, portfolio, quick_facts)
+        """
+        UPDATE profile SET
+            name=?, tagline=?, location=?, contact_email=?, github=?, linkedin=?, portfolio=?, quick_facts=?,
+            github_links=?, linkedin_links=?, other_links=?
+        WHERE id = 1
+        """,
+        (
+            name, tagline, location, contact_email,
+            legacy_github_norm, legacy_linkedin_norm, portfolio_norm, quick_facts,
+            json.dumps(githubs), json.dumps(linkedins), json.dumps(others)
+        )
     )
     db.commit()
-    # push to GitHub
+    # push to GitHub (best-effort)
     if github_enabled():
         try:
             github_upload_db("Update public profile")
@@ -586,6 +769,7 @@ def heartbeat():
     users = db.execute("SELECT * FROM users ORDER BY id ASC").fetchall()
     uploads = db.execute("SELECT * FROM uploads ORDER BY uploaded_at DESC").fetchall()
     profile = get_profile()
+    # Pass profile as dict (templates expecting profile.xxx will still work because we preserved legacy keys)
     return render_template("heartbeat.html", users=users, uploads=uploads, profile=profile)
 
 @app.route("/delete_user/<int:user_id>", methods=["POST"])
@@ -692,13 +876,6 @@ def pulse_receiver():
                 print("Forward to breathe failed:", e)
         except Exception as e:
             print("Forward to breathe failed:", e)
-
-    # Optional: trigger GitHub backup (best-effort) — commented out by default
-    # if github_enabled():
-    #     try:
-    #         github_upload_db("Pulse received — update DB")
-    #     except Exception as e:
-    #         print("GitHub upload after pulse failed:", e)
 
     return jsonify({"status":"ok", "received_at": received_at})
 
