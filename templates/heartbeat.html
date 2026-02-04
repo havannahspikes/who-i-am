@@ -1,4 +1,4 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %} 
 {% block content %}
 <h2>Heartbeat — Admin</h2>
 
@@ -12,70 +12,8 @@
         <div class="col-md-6"><input name="tagline" class="form-control" placeholder="Tagline" value="{{ profile.tagline }}"></div>
         <div class="col-md-4"><input name="location" class="form-control" placeholder="Location" value="{{ profile.location }}"></div>
         <div class="col-md-4"><input name="contact_email" class="form-control" placeholder="Contact email" value="{{ profile.contact_email }}"></div>
-
-        <!-- GitHub links (multiple) -->
-        <div class="col-12">
-          <label class="form-label">GitHub links (one per line)</label>
-          <div id="github-list">
-            {% if profile.github_links %}
-              {% for g in profile.github_links %}
-                <div class="input-group mb-2 link-entry">
-                  <input name="github[]" class="form-control" placeholder="e.g. Metatrone/ProjectX or https://github.com/..." value="{{ g }}">
-                  <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-                </div>
-              {% endfor %}
-            {% else %}
-              <div class="input-group mb-2 link-entry">
-                <input name="github[]" class="form-control" placeholder="e.g. Metatrone/ProjectX or https://github.com/...">
-                <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-              </div>
-            {% endif %}
-          </div>
-          <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addLink('github-list','github[]')">+ Add GitHub</button>
-        </div>
-
-        <!-- LinkedIn links (multiple) -->
-        <div class="col-12">
-          <label class="form-label mt-2">LinkedIn links</label>
-          <div id="linkedin-list">
-            {% if profile.linkedin_links %}
-              {% for l in profile.linkedin_links %}
-                <div class="input-group mb-2 link-entry">
-                  <input name="linkedin[]" class="form-control" placeholder="e.g. in/yourname or https://www.linkedin.com/in/..." value="{{ l }}">
-                  <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-                </div>
-              {% endfor %}
-            {% else %}
-              <div class="input-group mb-2 link-entry">
-                <input name="linkedin[]" class="form-control" placeholder="e.g. in/yourname or https://www.linkedin.com/in/...">
-                <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-              </div>
-            {% endif %}
-          </div>
-          <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addLink('linkedin-list','linkedin[]')">+ Add LinkedIn</button>
-        </div>
-
-        <!-- Other links -->
-        <div class="col-12">
-          <label class="form-label mt-2">Other links (personal site, demos, articles)</label>
-          <div id="other-list">
-            {% if profile.other_links %}
-              {% for o in profile.other_links %}
-                <div class="input-group mb-2 link-entry">
-                  <input name="other[]" class="form-control" placeholder="https://..." value="{{ o }}">
-                  <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-                </div>
-              {% endfor %}
-            {% else %}
-              <div class="input-group mb-2 link-entry">
-                <input name="other[]" class="form-control" placeholder="https://...">
-                <button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>
-              </div>
-            {% endif %}
-          </div>
-          <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="addLink('other-list','other[]')">+ Add other link</button>
-        </div>
-
+        <div class="col-md-4"><input name="github" class="form-control" placeholder="GitHub URL" value="{{ profile.github }}"></div>
+        <div class="col-md-6"><input name="linkedin" class="form-control" placeholder="LinkedIn URL" value="{{ profile.linkedin }}"></div>
         <div class="col-md-6"><input name="portfolio" class="form-control" placeholder="Portfolio URL" value="{{ profile.portfolio }}"></div>
         <div class="col-12">
           <textarea name="quick_facts" class="form-control" placeholder="Quick facts, degree, skills, etc.">{{ profile.quick_facts }}</textarea>
@@ -159,17 +97,4 @@
     </div>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-function addLink(containerId, inputName) {
-  const container = document.getElementById(containerId);
-  const div = document.createElement('div');
-  div.className = 'input-group mb-2 link-entry';
-  div.innerHTML = `<input name="${inputName}" class="form-control" placeholder="Add link">` +
-                  `<button type="button" class="btn btn-outline-danger remove-btn" onclick="this.closest('.link-entry').remove()">Remove</button>`;
-  container.appendChild(div);
-}
-</script>
 {% endblock %}
