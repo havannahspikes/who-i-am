@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block content %}
+{# Replace the placeholder URLs below with your actual links. #}
 <div class="row g-4">
   <div class="col-lg-8">
     <div class="card p-4 shadow-sm">
@@ -10,9 +11,21 @@
           <p class="text-muted mb-0">{{ profile.location }}</p>
         </div>
         <div class="ms-auto text-end">
-          <a class="btn btn-outline-secondary mb-2" href="{{ profile.portfolio or '#' }}" target="_blank" rel="noopener">Portfolio</a>
+          <a class="btn btn-outline-secondary mb-2" href="{{ profile.portfolio or 'https://yourportfolio.example.com' }}" target="_blank" rel="noopener">Portfolio</a>
           <a class="btn btn-primary mb-2" href="mailto:{{ profile.contact_email }}">Contact</a>
-          <div class="small text-muted">Links: <a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a> · <a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></div>
+
+          <div class="small text-muted mt-1">
+            Links:
+            <!-- Hardcoded multiple GitHub repos — replace these placeholders with actual repo URLs -->
+            <a href="https://github.com/USERNAME/Repo1" target="_blank" rel="noopener">GitHub Repo1</a> ·
+            <a href="https://github.com/USERNAME/Repo2" target="_blank" rel="noopener">Repo2</a> ·
+            <a href="https://github.com/USERNAME/Repo3" target="_blank" rel="noopener">Repo3</a> ·
+            <a href="https://github.com/USERNAME/Repo4" target="_blank" rel="noopener">Repo4</a> ·
+            <a href="https://github.com/USERNAME/Repo5" target="_blank" rel="noopener">Repo5</a> ·
+            <a href="https://github.com/USERNAME/Repo6" target="_blank" rel="noopener">Repo6</a>
+            <!-- One hardcoded LinkedIn placeholder -->
+            · <a href="https://www.linkedin.com/in/USERNAME" target="_blank" rel="noopener">LinkedIn</a>
+          </div>
         </div>
       </div>
 
@@ -75,10 +88,22 @@
       <hr />
       <p class="mb-1"><strong>Contact:</strong> <a href="mailto:{{ profile.contact_email }}">{{ profile.contact_email }}</a></p>
       <p class="mb-0"><strong>Links:</strong></p>
+
       <ul class="small mb-0">
-        <li><a href="{{ profile.github }}" target="_blank" rel="noopener">GitHub</a></li>
-        <li><a href="{{ profile.linkedin }}" target="_blank" rel="noopener">LinkedIn</a></li>
-        <li><a href="{{ profile.portfolio }}" target="_blank" rel="noopener">Portfolio</a></li>
+        <!-- Many GitHub placeholders (replace each with the repo you want visible) -->
+        <li><a href="https://github.com/JeanGift /" target="_blank" rel="noopener">GitHub — Repo1</a></li>
+        <li><a href="https://github.com/havannahspikes / who-i-am" target="_blank" rel="noopener">GitHub — Repo2</a></li>
+        <li><a href="https://github.com/VoyagerGo/" target="_blank" rel="noopener">GitHub — Repo3</a></li>
+
+        <!-- One hardcoded LinkedIn placeholder -->
+        <li><a href="https://www.linkedin.com/in/Jean Gift" target="_blank" rel="noopener">LinkedIn — /in/USERNAME</a></li>
+
+        <!-- Other links placeholders (demos, blog, resume) -->
+        <li><a href="https://who-i-am-uzh6.onrender.com/" target="_blank" rel="noopener">This Site</a></li>
+        <li><a href="https://tomorrow-personal-app.onrender.com/" target="_blank" rel="noopener">Personal Life PWA capable</a></li>
+
+        <!-- Fallback portfolio (keeps existing DB value if present) -->
+        <li><a href="{{ profile.portfolio or 'https://who-i-am-uzh6.onrender.com/' }}" target="_blank" rel="noopener">Portfolio</a></li>
       </ul>
     </div>
   </div>
